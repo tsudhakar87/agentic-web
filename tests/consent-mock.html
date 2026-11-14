@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<!--
+  Task 3 — Allowance consent UI mock
+  Static HTML prototype. No build step, no dependencies.
+
+  Shows:
+    1. Consent screen — triggered before a peer network loads; graph-based
+       estimate (from estimateRemoteCost) replaces the current text-length guess.
+    2. Running state — live trace view skinned over trace.js span events.
+    3. Stopped / budget-exceeded states.
+
+  Wiring note for real integration:
+    - engine.js passes requestConsent to runner.js ctx
+    - runner.js calls ctx.requestConsent({ kind, peerLabel, peerOrigin, requestText, est })
+    - Replace the mock data below with the live est object from estimateRemoteCost()
+    - Replace the mock trace events with real TraceBus "event" CustomEvents
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allowance — consent UI mock</title>
+<style>
+  /* ── Reset & tokens ──────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --border:    #2e3146;
+    --text:      #e2e4f0;
+    --muted:     #7b7f9e;
+    --accent:    #6c8ef5;
+    --danger:    #e05c6e;
+    --ok:        #4caf86;
+    --warn:      #e09a3c;
+    --radius:    10px;
+    --mono:      "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────────────── */
+  .scene {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 24px;
+    padding: 32px 16px;
+    min-height: 100vh;
+  }
+
+  /* left: simulated page behind the dialog */
+  .page-bg {
+    flex: 1;
+    max-width: 480px;
+    opacity: 0.3;
+    pointer-events: none;
+    user-select: none;
+  }
+  .page-bg .fake-chat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .fake-msg { margin-bottom: 10px; }
+  .fake-msg .label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .fake-msg .bubble {
+    background: var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: inline-block;
+    max-width: 90%;
+    font-size: 13px;
+  }
+  .fake-msg.assistant .bubble { background: #22253a; }
+
+  /* right: state switcher (demo only) */
+  .demo-controls {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+  }
+  .demo-controls button {
+    background: #22253a;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .demo-controls button:hover { color: var(--text); }
+
+  /* ── Dialog shell ────────────────────────────────────────────────── */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 16px;
+  }
+  .overlay.hidden { display: none; }
+
+  .dialog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 420px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+  }
+
+  .dialog-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .dialog-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .dialog-icon.network { background: #1e2a4a; }
+  .dialog-icon.running { background: #1a2e22; }
+  .dialog-icon.stopped { background: #2a1e1e; }
+  .dialog-icon.exceeded { background: #2a2214; }
+
+  .dialog-title { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .dialog-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .dialog-body { padding: 16px 20px; }
+
+  /* ── Consent state ───────────────────────────────────────────────── */
+  .peer-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #13161f;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+  }
+  .peer-favicon {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    background: #1e2a4a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+  }
+  .peer-origin { font-size: 13px; font-weight: 500; }
+  .peer-desc   { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  .request-quote {
+    background: #13161f;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    font-style: italic;
+  }
+  .request-quote span { color: var(--text); font-style: normal; }
+
+  /* cost estimate grid */
+  .estimate {
+    background: #13161f;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .estimate-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+  .estimate-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+  }
+  .est-item .val {
+    font-size: 15px;
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+  .est-item .key {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .est-source {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .est-source .tag {
+    display: inline-block;
+    background: #1e2a4a;
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-family: var(--mono);
+    margin-right: 4px;
+  }
+
+  .budget-note {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .budget-note .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ok);
+    flex-shrink: 0;
+  }
+
+  /* action buttons */
+  .actions {
+    display: flex;
+    gap: 10px;
+  }
+  .btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-allow { background: var(--accent); color: #fff; }
+  .btn-stop  { background: #22253a; color: var(--text); border: 1px solid var(--border); }
+  .btn-stop.danger { background: #2a1e1e; color: var(--danger); border-color: #4a2228; }
+  .btn-close { background: #22253a; color: var(--text); border: 1px solid var(--border); flex: none; padding: 10px 20px; }
+
+  /* ── Trace / running state ───────────────────────────────────────── */
+  .trace-panel { padding: 0; }
+
+  .trace-summary {
+    display: flex;
+    gap: 16px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .ts-item .ts-val { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .ts-item .ts-key { color: var(--muted); margin-top: 1px; }
+
+  .trace-list {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .span-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 20px;
+    font-size: 12px;
+  }
+  .span-row:hover { background: #14161f; }
+
+  .span-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .span-dot.ok       { background: var(--ok); }
+  .span-dot.running  { background: var(--accent); animation: pulse 1s infinite; }
+  .span-dot.error    { background: var(--danger); }
+  .span-dot.stopped  { background: var(--muted); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  .span-kind {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    min-width: 90px;
+    flex-shrink: 0;
+  }
+  .span-label { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .span-dur   { font-family: var(--mono); font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .span-row.indent-1 { padding-left: 36px; }
+  .span-row.indent-2 { padding-left: 52px; }
+
+  .trace-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Exceeded / stopped states ───────────────────────────────────── */
+  .state-body {
+    padding: 20px 20px 8px;
+    text-align: center;
+  }
+  .state-icon { font-size: 32px; margin-bottom: 10px; }
+  .state-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .state-desc  { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .state-detail {
+    background: #13161f;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 14px 0 0;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--warn);
+    text-align: left;
+  }
+
+  /* ── Inline trace (running state, right panel) ───────────────────── */
+  .right-panel {
+    width: 320px;
+    flex-shrink: 0;
+  }
+  .trace-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .trace-card-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .live-badge {
+    background: #1a2e22;
+    color: var(--ok);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .trace-card .span-row { padding-left: 14px; }
+  .trace-card .span-row.indent-1 { padding-left: 28px; }
+  .trace-card .span-row.indent-2 { padding-left: 42px; }
+</style>
+</head>
+<body>
+
+<!-- ── Simulated page (blurred behind dialog) ──────────────────────── -->
+<div class="scene">
+  <div class="page-bg">
+    <div class="fake-chat">
+      <div class="fake-msg">
+        <div class="label">You</div>
+        <div class="bubble">Find me a boat trip on Saturday for two people, leaving from the city centre.</div>
+      </div>
+      <div class="fake-msg assistant">
+        <div class="label">Assistant</div>
+        <div class="bubble">I can check Seaside Trips for availability. To do that I need to contact their agent network…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right panel: live trace (visible when running) -->
+  <div class="right-panel" id="rightPanel" style="display:none">
+    <div class="trace-card">
+      <div class="trace-card-header">
+        Live graph <span class="live-badge">LIVE</span>
+      </div>
+      <div id="rightTrace"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STATE 1: Consent dialog
+═══════════════════════════════════════════════════════════════════ -->
+<div class="overlay" id="stateConsent">
+  <div class="dialog">
+    <div class="dialog-header">
+      <div class="dialog-icon network">🔗</div>
+      <div>
+        <div class="dialog-title">A peer network wants to run on your session</div>
+        <div class="dialog-sub">This site's assistant needs to contact a third-party agent.</div>
+      </div>
+    </div>
+    <div class="dialog-body">
+
+      <div class="peer-row">
+        <div class="peer-favicon">⛵</div>
+        <div>
+          <div class="peer-origin">seaside-trips.example</div>
+          <div class="peer-desc">Boat trip booking network · 3 agents · 4 tools</div>
+        </div>
+      </div>
+
+      <div class="request-quote">
+        Your request: <span>"Find a boat trip Saturday for two"</span>
+      </div>
+
+      <div class="estimate">
+        <div class="estimate-label">Estimated cost</div>
+        <div class="estimate-grid">
+          <div class="est-item">
+            <div class="val" style="color:var(--accent)">$0.0012</div>
+            <div class="key">USD · worst case</div>
+          </div>
+          <div class="est-item">
+            <div class="val">~340</div>
+            <div class="key">tokens</div>
+          </div>
+          <div class="est-item">
+            <div class="val">3</div>
+            <div class="key">agents</div>
+          </div>
+          <div class="est-item">
+            <div class="val">4</div>
+            <div class="key">tool calls est.</div>
+          </div>
+        </div>
+        <div class="est-source">
+          <span class="tag">estimateRemoteCost()</span>
+          read from peer's network graph · replaces text-length guess
+        </div>
+      </div>
+
+      <div class="budget-note">
+        <span class="dot"></span>
+        Runs on your LLM key · spend ceiling $0.10 / day per site (via Allowance)
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-stop" onclick="show('stateStopped')">Stop</button>
+        <button class="btn btn-allow" onclick="show('stateRunning')">Allow</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STATE 2: Running (trace view inside dialog + live graph panel)
+═══════════════════════════════════════════════════════════════════ -->
+<div class="overlay hidden" id="stateRunning">
+  <div class="dialog">
+    <div class="dialog-header">
+      <div class="dialog-icon running">🟢</div>
+      <div>
+        <div class="dialog-title">seaside-trips.example is running</div>
+        <div class="dialog-sub">On your key · within your $0.10/day ceiling</div>
+      </div>
+    </div>
+
+    <div class="trace-panel">
+      <div class="trace-summary">
+        <div class="ts-item">
+          <div class="ts-val" id="runTokens">—</div>
+          <div class="ts-key">tokens used</div>
+        </div>
+        <div class="ts-item">
+          <div class="ts-val" id="runCost">—</div>
+          <div class="ts-key">spend</div>
+        </div>
+        <div class="ts-item">
+          <div class="ts-val" id="runTime">0s</div>
+          <div class="ts-key">elapsed</div>
+        </div>
+      </div>
+
+      <div class="trace-list" id="traceList"></div>
+
+      <div class="trace-footer">
+        <div class="actions">
+          <button class="btn btn-stop danger" onclick="show('stateStopped')">Stop peer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STATE 3: Stopped
+═══════════════════════════════════════════════════════════════════ -->
+<div class="overlay hidden" id="stateStopped">
+  <div class="dialog">
+    <div class="dialog-header">
+      <div class="dialog-icon stopped">⛔</div>
+      <div>
+        <div class="dialog-title">Peer stopped</div>
+        <div class="dialog-sub">seaside-trips.example was not contacted.</div>
+      </div>
+    </div>
+    <div class="state-body">
+      <div class="state-desc">
+        The peer network was stopped before it ran. No tokens were used and no data was sent to the peer origin.
+      </div>
+    </div>
+    <div class="dialog-body">
+      <div class="actions">
+        <button class="btn btn-close" onclick="show('stateConsent')">↩ Back to consent</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STATE 4: Budget exceeded (Otari 403)
+═══════════════════════════════════════════════════════════════════ -->
+<div class="overlay hidden" id="stateExceeded">
+  <div class="dialog">
+    <div class="dialog-header">
+      <div class="dialog-icon exceeded">🚫</div>
+      <div>
+        <div class="dialog-title">Spend ceiling reached</div>
+        <div class="dialog-sub">seaside-trips.example · today's budget used up</div>
+      </div>
+    </div>
+    <div class="state-body">
+      <div class="state-desc">
+        This site has reached its daily spend limit for
+        <strong>seaside-trips.example</strong>. The peer was stopped automatically before any further tokens were used.
+      </div>
+      <div class="state-detail">
+        code: "budget_exceeded"<br>
+        end_user: "https://seaside-trips.example"<br>
+        resets: tomorrow 00:00 UTC
+      </div>
+    </div>
+    <div class="dialog-body">
+      <div class="actions">
+        <button class="btn btn-close" onclick="show('stateConsent')">↩ Back</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Demo controls ──────────────────────────────────────────────── -->
+<div class="demo-controls">
+  <span style="color:var(--muted);font-size:11px;line-height:28px">demo:</span>
+  <button onclick="show('stateConsent')">consent</button>
+  <button onclick="show('stateRunning')">running</button>
+  <button onclick="show('stateStopped')">stopped</button>
+  <button onclick="show('stateExceeded')">exceeded</button>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// State switcher
+// ---------------------------------------------------------------------------
+const states = ['stateConsent','stateRunning','stateStopped','stateExceeded'];
+
+function show(id) {
+  states.forEach(s => {
+    const el = document.getElementById(s);
+    el.classList.toggle('hidden', s !== id);
+  });
+  if (id === 'stateRunning') startTrace();
+  document.getElementById('rightPanel').style.display =
+    id === 'stateRunning' ? 'block' : 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Simulated trace events (mirrors what TraceBus emits in trace.js)
+// In production: listen to trace.addEventListener("event", e => renderSpan(e.detail))
+// ---------------------------------------------------------------------------
+const MOCK_SPANS = [
+  { id:'s0', kind:'remote_run',  label:'seaside-trips.example',  status:'running', durationMs:null,  indent:0 },
+  { id:'s1', kind:'model_call',  label:'front_agent · gpt-4o-mini', status:'ok',   durationMs:312,  indent:1 },
+  { id:'s2', kind:'tool_call',   label:'search_trips',            status:'ok',     durationMs:88,   indent:2 },
+  { id:'s3', kind:'tool_call',   label:'check_availability',      status:'ok',     durationMs:104,  indent:2 },
+  { id:'s4', kind:'model_call',  label:'front_agent · gpt-4o-mini', status:'running', durationMs:null, indent:1 },
+];
+
+const RIGHT_SPANS = [
+  { id:'r0', kind:'remote_run',  label:'seaside-trips.example',   status:'running', durationMs:null, indent:0 },
+  { id:'r1', kind:'model_call',  label:'front_agent',              status:'ok',     durationMs:312,  indent:1 },
+  { id:'r2', kind:'tool_call',   label:'search_trips',             status:'ok',     durationMs:88,   indent:1 },
+  { id:'r3', kind:'tool_call',   label:'check_availability',       status:'ok',     durationMs:104,  indent:1 },
+  { id:'r4', kind:'model_call',  label:'front_agent',              status:'running', durationMs:null, indent:1 },
+];
+
+function spanRow(span) {
+  const dot = `<span class="span-dot ${span.status}"></span>`;
+  const kind = `<span class="span-kind">${span.kind}</span>`;
+  const label = `<span class="span-label">${span.label}</span>`;
+  const dur = span.durationMs != null
+    ? `<span class="span-dur">${span.durationMs}ms</span>`
+    : `<span class="span-dur" style="color:var(--accent)">…</span>`;
+  return `<div class="span-row indent-${span.indent}">${dot}${kind}${label}${dur}</div>`;
+}
+
+let traceTimer = null;
+let startTime = null;
+
+function startTrace() {
+  clearInterval(traceTimer);
+  startTime = Date.now();
+  let step = 0;
+  const list = document.getElementById('traceList');
+  const right = document.getElementById('rightTrace');
+  list.innerHTML = '';
+  right.innerHTML = '';
+  document.getElementById('runTokens').textContent = '—';
+  document.getElementById('runCost').textContent = '—';
+  document.getElementById('runTime').textContent = '0s';
+
+  traceTimer = setInterval(() => {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    document.getElementById('runTime').textContent = elapsed + 's';
+
+    if (step < MOCK_SPANS.length) {
+      list.innerHTML += spanRow(MOCK_SPANS[step]);
+      right.innerHTML = RIGHT_SPANS.slice(0, step + 1).map(spanRow).join('');
+      list.scrollTop = list.scrollHeight;
+      step++;
+    }
+
+    // Update counters as spans complete
+    const done = MOCK_SPANS.slice(0, step).filter(s => s.status === 'ok').length;
+    if (done > 0) {
+      document.getElementById('runTokens').textContent = (done * 68).toString();
+      const cost = (done * 68 / 1e6 * 0.15).toFixed(5);
+      document.getElementById('runCost').textContent = '$' + cost;
+    }
+
+    if (step >= MOCK_SPANS.length) clearInterval(traceTimer);
+  }, 600);
+}
+</script>
+</body>
+</html>
