@@ -91,6 +91,14 @@ export class LlmClient {
       body.tools = tools;
       body.tool_choice = "auto";
     }
+    // Forward the calling origin as the end-user id so an Otari (or compatible)
+    // router can enforce per-origin spend ceilings. Use a stable per-origin id
+    // (not per-session) so budgets accumulate correctly across requests.
+    if (origin) body.user = origin;
+    // Routers that hold budget at worst-case = prompt_tokens + max_tokens need an
+    // explicit ceiling; without it they default to 1024 anyway but make it
+    // explicit so the reservation is predictable.
+    body.max_tokens = body.max_tokens ?? 1024;
 
     try {
       if (this.baseUrl === "browser://mock") {
