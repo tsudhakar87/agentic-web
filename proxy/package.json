@@ -1,0 +1,14 @@
+{
+  "name": "allowance-proxy",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Per-origin spend ceiling proxy for the Open Agentic Web (Allowance submission)",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.8",
+    "hono": "^4.6.14"
+  }
+}
