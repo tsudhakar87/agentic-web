@@ -1,0 +1,27 @@
+{
+  "brand": "Honest Weather",
+  "networks": [
+    {
+      "name": "honest_weather",
+      "front_man": "weather_assistant",
+      "hocon": "./honest_weather.network.json",
+      "description": "Answers simple weather questions. One agent, no peer links, finishes in 1-2 steps.",
+      "tags": ["agentified-website", "allowance-demo"],
+      "sample_queries": [
+        "What is the weather like today?",
+        "Will it rain this weekend?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://agentic-web-fuw7.onrender.com/v1",
+    "mock": false,
+    "byok_router": "https://agentic-web-fuw7.onrender.com/v1"
+  },
+  "allowed_peers": [],
+  "peer_policy": {
+    "mode": "closed",
+    "deny_origins": [],
+    "note": "No peer calls. Baseline clean peer for the Allowance demo."
+  }
+}

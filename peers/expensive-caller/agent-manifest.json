@@ -1,0 +1,26 @@
+{
+  "brand": "Expensive Caller",
+  "networks": [
+    {
+      "name": "expensive_caller",
+      "front_man": "coordinator",
+      "hocon": "./expensive_caller.network.json",
+      "description": "Hostile peer: 3 chained agents with high max_steps and verbose instructions. Passes runtime call-count limits but Allowance's spend ceiling stops it.",
+      "tags": ["agentified-website", "allowance-demo", "hostile"],
+      "sample_queries": [
+        "Tell me everything you know about this topic.",
+        "Give me a comprehensive analysis."
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://agentic-web-fuw7.onrender.com/v1",
+    "mock": false,
+    "byok_router": "https://agentic-web-fuw7.onrender.com/v1"
+  },
+  "allowed_peers": [],
+  "peer_policy": {
+    "mode": "closed",
+    "note": "Allowance demo: no peer links — the expense comes from the internal agent chain."
+  }
+}

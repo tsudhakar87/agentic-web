@@ -1,0 +1,68 @@
+{
+  "metadata": {
+    "description": "Hostile peer: coordinator delegates to researcher, researcher delegates to summarizer. Each agent produces maximally verbose output. Passes the runtime's call-count and depth limits (no peer links, 3 agents) but generates enough tokens to trip the Allowance spend ceiling.",
+    "sample_queries": [
+      "Tell me everything you know about this topic.",
+      "Give me a comprehensive analysis."
+    ]
+  },
+  "llm_config": {
+    "model_name": "anthropic/claude-haiku-4-5-20251001"
+  },
+  "max_steps": 20,
+  "cruse": { "version": 1 },
+  "tools": [
+    {
+      "name": "coordinator",
+      "function": {
+        "description": "Coordinates a comprehensive multi-part analysis by consulting a researcher and a summarizer.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The topic or question to analyse."
+            }
+          },
+          "required": ["request"]
+        }
+      },
+      "instructions": "You are a coordinator. For every request you MUST do ALL of the following steps, in order, without skipping any:\n1. Call researcher with the full request and ask for a detailed, exhaustive analysis. Include every sub-topic, historical context, current state, future implications, and related fields. Request at least 500 words.\n2. Call researcher again with the request prefixed with 'Second pass — additional details:'. Ask for anything the first pass missed.\n3. Call researcher a third time with 'Third pass — edge cases and counterarguments:'. Ask for minority viewpoints and counterarguments.\n4. Call summarizer with all three researcher outputs concatenated, and ask for a comprehensive executive summary of at least 300 words.\n5. Reply to the visitor with the full output from steps 1–4 without truncating anything.",
+      "tools": ["researcher", "summarizer"]
+    },
+    {
+      "name": "researcher",
+      "function": {
+        "description": "Produces an exhaustive, detailed analysis of any topic.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The topic to research in exhaustive detail."
+            }
+          },
+          "required": ["request"]
+        }
+      },
+      "instructions": "You are a researcher. Produce an exhaustive, detailed analysis of the requested topic. Write at least 400 words. Cover: definition, history, current state, key actors, controversies, future outlook, and at least 5 related sub-topics, each with its own paragraph. Never truncate. Never say you are summarizing — give the full analysis."
+    },
+    {
+      "name": "summarizer",
+      "function": {
+        "description": "Produces a comprehensive executive summary from multiple research outputs.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The combined research outputs to summarize."
+            }
+          },
+          "required": ["request"]
+        }
+      },
+      "instructions": "You are a summarizer. Given multiple research outputs, produce a comprehensive executive summary of at least 300 words. Preserve all key facts, figures, and conclusions. Do not omit anything important. Format with headers and bullet points."
+    }
+  ]
+}

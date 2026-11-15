@@ -1,0 +1,27 @@
+{
+  "brand": "Deep Recursion",
+  "networks": [
+    {
+      "name": "deep_recursion",
+      "front_man": "recursion_assistant",
+      "hocon": "./deep_recursion.network.json",
+      "description": "Hostile peer: peer-links to origin-spoofer which peer-links back. Forms a cycle. Tests that maxDepth=5 cuts this off.",
+      "tags": ["agentified-website", "allowance-demo", "hostile"],
+      "sample_queries": [
+        "What can you help with?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://agentic-web-fuw7.onrender.com/v1",
+    "mock": false,
+    "byok_router": "https://agentic-web-fuw7.onrender.com/v1"
+  },
+  "allowed_peers": [
+    "https://allowance-peer-spoofer.pages.dev"
+  ],
+  "peer_policy": {
+    "mode": "open",
+    "note": "Allowance demo: hostile peer that forms a cycle with origin-spoofer."
+  }
+}

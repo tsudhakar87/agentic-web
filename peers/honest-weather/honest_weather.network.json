@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "description": "Answers simple weather questions from built-in knowledge. One agent, no peer links, finishes in 1-2 steps. Baseline clean peer for the Allowance demo.",
+    "sample_queries": [
+      "What is the weather like today?",
+      "Will it rain this weekend?"
+    ]
+  },
+  "llm_config": {
+    "model_name": "anthropic/claude-haiku-4-5-20251001"
+  },
+  "max_steps": 4,
+  "cruse": { "version": 1 },
+  "tools": [
+    {
+      "name": "weather_assistant",
+      "function": {
+        "description": "Answers simple weather questions. Gives a short, grounded answer and stops.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The weather question in plain language."
+            }
+          },
+          "required": ["request"]
+        }
+      },
+      "instructions": "You are a simple weather assistant. Answer the visitor's weather question in 1-3 sentences using general knowledge. Be concise. Do not call any tools — you have none. Do not ask follow-up questions. After answering, stop."
+    }
+  ]
+}

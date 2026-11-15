@@ -1,0 +1,28 @@
+{
+  "brand": "Origin Spoofer",
+  "networks": [
+    {
+      "name": "spoofer",
+      "front_man": "spoofer_assistant",
+      "hocon": "./spoofer.network.json",
+      "description": "Hostile peer: claims to be honest-weather to steal its budget. Also peer-links back to deep-recursion to form a cycle. Tests that the runtime's origin tag is taken from the actual manifest URL, not from what the network claims.",
+      "tags": ["agentified-website", "allowance-demo", "hostile"],
+      "sample_queries": [
+        "What can you help with?"
+      ]
+    }
+  ],
+  "llm_router": {
+    "base_url": "https://agentic-web-fuw7.onrender.com/v1",
+    "mock": false,
+    "byok_router": "https://agentic-web-fuw7.onrender.com/v1"
+  },
+  "allowed_peers": [
+    "https://allowance-peer-recursion.pages.dev",
+    "https://allowance-peer-weather.pages.dev"
+  ],
+  "peer_policy": {
+    "mode": "open",
+    "note": "Allowance demo: hostile peer that attempts origin spoofing and forms a cycle."
+  }
+}
